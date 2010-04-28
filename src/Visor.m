@@ -508,6 +508,10 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
     if (![ud objectForKey:@"VisorShowStatusItem"]) {
         [ud setBool:YES forKey:@"VisorShowStatusItem"];
     }
+	// pinned state
+    if (![ud objectForKey:@"VisorPinned"]) {
+        [ud setBool:YES forKey:@"VisorPinned"];
+    }		
     if (![ud objectForKey:@"VisorShowOnReopen"]) {
         [ud setBool:YES forKey:@"VisorShowOnReopen"];
     }
@@ -622,7 +626,8 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
     isKey = false;
     
     [NSBundle loadNibNamed:@"Visor" owner:self];
-    
+	// pinned state
+	[self updatePinnedState];    
     [self updateHotKeyRegistration];
     [self updateEscapeHotKeyRegistration];
     [self startEventMonitoring];
@@ -637,12 +642,14 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
     [udc addObserver:self forKeyPath:@"values.VisorHotKey2" options:0 context:nil];
     [udc addObserver:self forKeyPath:@"values.VisorHotKey2Enabled" options:0 context:nil];
     [udc addObserver:self forKeyPath:@"values.VisorUseFade" options:0 context:nil];                                                           
-    [udc addObserver:self forKeyPath:@"values.VisorUseSlide" options:0 context:nil];               
+    [udc addObserver:self forKeyPath:@"values.VisorUseSlide" options:0 context:nil];   
     [udc addObserver:self forKeyPath:@"values.VisorAnimationSpeed" options:0 context:nil];
     [udc addObserver:self forKeyPath:@"values.VisorShowStatusItem" options:0 context:nil];
     [udc addObserver:self forKeyPath:@"values.VisorScreen" options:0 context:nil];
     [udc addObserver:self forKeyPath:@"values.VisorPosition" options:0 context:nil];
     [udc addObserver:self forKeyPath:@"values.VisorHideOnEscape" options:0 context:nil];
+	// pinned state
+	[udc addObserver:self forKeyPath:@"values.VisorPinned" options:0 context:nil];	
     
     return self;
 }
@@ -679,12 +686,6 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
     [self updateStatusMenu];
 }
 
-- (IBAction)pinAction:(id)sender {
-    LOG(@"pinAction %@", sender);
-    isPinned = !isPinned;
-    [self updateStatusMenu];
-}
-
 - (IBAction)toggleVisor:(id)sender {
     LOG(@"toggleVisor %@ %d", sender, isHidden);
     if (!window_) {
@@ -711,6 +712,7 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
     LOG(@"visitHomepage");
     [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"http://visor.binaryage.com"]];
 }
+
 
 - (void)resetWindowPlacement {
     lastPosition = nil;
@@ -1065,6 +1067,8 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
 - (void)resignKey:(id)sender {
     LOG(@"resignKey %@", sender);
     isKey = false;
+	// handle pinned state by userdefaults value
+	BOOL isPinned = [[NSUserDefaults standardUserDefaults] boolForKey:@"VisorPinned"];
     [self updateEscapeHotKeyRegistration];
     if (!isPinned && !isMain && !isKey && !isHidden){
         [self hideVisor:false];  
@@ -1074,6 +1078,8 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
 - (void)resignMain:(id)sender {
     LOG(@"resignMain %@", sender);
     isMain = false;
+	// handle pinned state by userdefaults value
+	BOOL isPinned = [[NSUserDefaults standardUserDefaults] boolForKey:@"VisorPinned"];	
     if (!isPinned && !isMain && !isKey && !isHidden){
         [self hideVisor:false];  
     }
@@ -1112,6 +1118,9 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
     } else {
         [self updateHotKeyRegistration];
     }
+	if ([keyPath isEqualToString:@"values.VisorPinned"]) {
+		[self updatePinnedState];
+	}		
     if ([keyPath isEqualToString:@"values.VisorPosition"]) {
         [self resetWindowPlacement];
     }
@@ -1196,6 +1205,18 @@ static const size_t kModifierEventTypeSpecSize = sizeof(kModifierEventTypeSpec) 
     }
 }
 
+// pinned state
+- (void) updatePinnedState{
+	// update pinned state
+	BOOL isPinned = [[NSUserDefaults standardUserDefaults] boolForKey:@"VisorPinned"];	
+    NSMenuItem* pinItem = [statusMenu itemAtIndex:1];
+    if (!isPinned)
+		[pinItem setTitle:@"Pin Visor"];		
+    else
+		[pinItem setTitle:@"Unpin Visor"];
+}
+
+
 NSString* stringForCharacter(const unsigned short aKeyCode, unichar aCharacter);
 
 - (BOOL)validateMenuItem:(NSMenuItem*)menuItem {
@@ -1249,15 +1270,7 @@ NSString* stringForCharacter(const unsigned short aKeyCode, unichar aCharacter);
     if (isHidden)
         [showItem setTitle:@"Show Visor"];
     else
-        [showItem setTitle:@"Hide Visor"];
-    
-    // update second menu item
-    NSMenuItem* pinItem = [statusMenu itemAtIndex:1];
-    if (!isPinned)
-        [pinItem setTitle:@"Pin Visor"];
-    else
-        [pinItem setTitle:@"Unpin Visor"];
-    
+        [showItem setTitle:@"Hide Visor"];      
     // update icon
     BOOL status = [self status];
     if (status)
